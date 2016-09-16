@@ -20,26 +20,35 @@ public class WearableApi {
 
     private static final String TAG = "GLUCOSE::" + WearableApi.class.getSimpleName();
 
-    public static final String TRIGGER_GLUCOSE = "/trigger_glucose";
-    public static final String START = "/start";
-    public static final String STOP = "/stop";
-    public static final String CANCEL_ALARM = "/cancel_alarm";
-    public static final String SETTINGS = "/settings";
-    public static final String GLUCOSE = "/glucose";
-    public static final String STATUS = "/status_update";
-    public static final String GET_UPDATE = "/update";
+    private static final String PREFIX = "/librealarm";
 
-    public static final String MESSAGE_ACK = "OK";
+    public static final String TRIGGER_GLUCOSE = PREFIX + "/trigger_glucose";
+    public static final String START = PREFIX + "/start";
+    public static final String STOP = PREFIX + "/stop";
+    public static final String CANCEL_ALARM = PREFIX + "/cancel_alarm";
+    public static final String SETTINGS = PREFIX + "/settings";
+    public static final String GLUCOSE = PREFIX + "/glucose";
+    public static final String STATUS = PREFIX + "/status_update";
+    public static final String GET_UPDATE = PREFIX + "/update";
 
     public static boolean sendData(GoogleApiClient client, String command, HashMap<String, String> pairs, ResultCallback<DataApi.DataItemResult> listener) {
+        PutDataMapRequest putDataMapReq = PutDataMapRequest.create(command);
+        for (String key : pairs.keySet()) {
+            putDataMapReq.getDataMap().putString(key, pairs.get(key));
+        }
+        return sendData(client, putDataMapReq, listener);
+    }
+
+    public static boolean sendData(GoogleApiClient client, String command, String key, String data, ResultCallback<DataApi.DataItemResult> listener) {
+        PutDataMapRequest putDataMapReq = PutDataMapRequest.create(command);
+        putDataMapReq.getDataMap().putString(key, data);
+        return sendData(client, putDataMapReq, listener);
+    }
+
+    private static boolean sendData(GoogleApiClient client, PutDataMapRequest putDataMapReq, ResultCallback<DataApi.DataItemResult> listener) {
         if (client.isConnected()) {
-            Log.i(TAG, "send data, message: " + command);
-            PutDataMapRequest putDataMapReq = PutDataMapRequest.create(command);
-            for (String key : pairs.keySet()) {
-                putDataMapReq.getDataMap().putString(key, pairs.get(key));
-            }
+            Log.i(TAG, "update settings");
             putDataMapReq.setUrgent();
-            putDataMapReq.getDataMap().putLong("timestamp", System.currentTimeMillis());
             PutDataRequest putDataReq = putDataMapReq.asPutDataRequest();
             PendingResult<DataApi.DataItemResult> pR =
                     Wearable.DataApi.putDataItem(client, putDataReq);

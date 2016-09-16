@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <PreferenceCategory
+        android:title="@string/settings_category_general">
+        <CheckBoxPreference
+            android:key="@string/pref_key_err_alarm_enabled"
+            android:title="@string/settings_err_checkbox"
+            android:defaultValue="false" />
+        <EditTextPreference
+            android:key="@string/pref_key_err_alarm"
+            android:dependency="@string/pref_key_err_alarm_enabled"
+            android:title="@string/settings_err_edittext"
+            android:inputType="numberSigned"
+            android:defaultValue="2" />
+        <CheckBoxPreference
+            android:key="@string/pref_key_phone_alarm"
+            android:title="@string/settings_phone_alarm_text"
+            android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="@string/pref_key_mmol"
+            android:title="@string/settings_glucose_units_text"
+            android:defaultValue="true" />
+        <EditTextPreference
+            android:key="@string/pref_key_glucose_interval"
+            android:title="@string/settings_glucose_interval"
+            android:inputType="numberSigned"
+            android:defaultValue="10" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/settings_category_text_to_speech">
+        <CheckBoxPreference
+            android:key="@string/pref_key_text_to_speech"
+            android:title="@string/settings_text_to_speech_title"
+            android:summary="@string/settings_text_to_speech_summary"
+            android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="@string/pref_key_text_to_speech_only_alarm"
+            android:dependency="@string/pref_key_text_to_speech"
+            android:title="@string/settings_text_to_speech_only_alarm_title"
+            android:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="Power save features">
+        <CheckBoxPreference
+            android:key="@string/pref_key_root"
+            android:title="@string/pref_key_root_title"
+            android:summary="@string/pref_key_root_summary"
+            android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="@string/pref_key_clock_speed"
+            android:title="@string/pref_key_clock_speed_title"
+            android:summary="@string/pref_key_clock_speed_summary"
+            android:dependency="@string/pref_key_root"
+            android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="@string/pref_key_disable_touchscreen"
+            android:title="@string/pref_key_disable_touchscreen_title"
+            android:summaryOn="@string/pref_key_disable_touchscreen_summary"
+            android:dependency="@string/pref_key_root"
+            android:defaultValue="false" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

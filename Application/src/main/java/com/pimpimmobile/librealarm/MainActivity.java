@@ -3,11 +3,13 @@ package com.pimpimmobile.librealarm;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.app.Fragment;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -28,22 +30,24 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.pimpimmobile.librealarm.nightscout.NightscoutPreferences;
+import com.pimpimmobile.librealarm.quicksettings.QuickSettingsItem;
+import com.pimpimmobile.librealarm.quicksettings.QuickSettingsView;
+import com.pimpimmobile.librealarm.quicksettings.QuickSettingsView.QuickSettingsChangeListener;
 import com.pimpimmobile.librealarm.shareddata.AlgorithmUtil;
 import com.pimpimmobile.librealarm.shareddata.GlucoseData;
 import com.pimpimmobile.librealarm.shareddata.PredictionData;
+import com.pimpimmobile.librealarm.shareddata.PreferencesUtil;
 import com.pimpimmobile.librealarm.shareddata.Status;
 import com.pimpimmobile.librealarm.shareddata.Status.Type;
 import com.pimpimmobile.librealarm.shareddata.WearableApi;
-import com.pimpimmobile.librealarm.shareddata.settings.GlucoseUnitSettings;
-import com.pimpimmobile.librealarm.shareddata.settings.PostponeSettings;
-import com.pimpimmobile.librealarm.shareddata.settings.SettingsUtils;
+import com.pimpimmobile.librealarm.xdrip_plus.XdripPlusPreferences;
 
 import java.util.Date;
 import java.util.HashMap;
 
 public class MainActivity extends Activity implements WearService.WearServiceListener,
         SimpleDatabase.DatabaseListener, HistoryAdapter.OnListItemClickedListener,
-        AlarmDialogFragment.AlarmActionListener {
+        AlarmDialogFragment.AlarmActionListener, QuickSettingsChangeListener {
 
     private static final String TAG = "GLUCOSE::" + MainActivity.class.getSimpleName();
 
@@ -56,10 +60,11 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
     private ActionBarDrawerToggle mDrawerToggle;
     private WearService mService;
     private ProgressBar mProgressBar;
-    private SettingsView mSettingsView;
-    private GlucoseUnitSettings mGlucoseUnitSettings;
-    private TextView mAlarmDisabledTextView;
-    private View mAlarmDisabledParent;
+    private QuickSettingsView mQuickSettings;
+    private TextView mSnoozeLowTextView;
+    private View mSnoozeLowParent;
+    private TextView mSnoozeHighTextView;
+    private View mSnoozeHighParent;
     private boolean mIsFirstStartup;
 
     private ServiceConnection mConnection = new ServiceConnection() {
@@ -101,9 +106,11 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
         ((FrameLayout) findViewById(R.id.content_frame)).addView(layout);
 
         DrawerLayout drawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
-        mSettingsView = (SettingsView) findViewById(R.id.settings);
-        mGlucoseUnitSettings = (GlucoseUnitSettings)
-                mSettingsView.settingsMap.get(GlucoseUnitSettings.class.getSimpleName());
+
+        mQuickSettings = (QuickSettingsView) findViewById(R.id.quick_settings);
+        mQuickSettings.setUpdateListener(this);
+
+        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
 
         // enable ActionBar app icon to behave as action to toggle nav drawer
         getActionBar().setDisplayHomeAsUpEnabled(true);
@@ -115,18 +122,14 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
             mIsFirstStartup = true;
         }
 
-        mDrawerToggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.drawer_close,
-                R.string.drawer_open) {
-            public void onDrawerClosed(View view) {
-                ((PostponeSettings) mSettingsView.settingsMap
-                        .get(PostponeSettings.class.getSimpleName())).setValueFromView();
-                HashMap<String, String> settings = SettingsUtils.getTransferHashMap(mSettingsView.settingsMap);
-                mService.sendData(WearableApi.SETTINGS, settings, null);
-
-                SettingsUtils.saveSettings(MainActivity.this, settings);
-            }
-
-            public void onDrawerOpened(View drawerView) {
+        mDrawerToggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.drawer_close, R.string.drawer_open) {
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                HashMap<String, String> savedSettings = mQuickSettings.saveSettings();
+                if (savedSettings.size() > 0) {
+                    mService.sendData(WearableApi.SETTINGS, savedSettings, null);
+                }
+                super.onDrawerClosed(drawerView);
             }
         };
         drawerLayout.setDrawerListener(mDrawerToggle);
@@ -139,27 +142,42 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
         mTriggerGlucoseButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                mProgressBar.setVisibility(View.VISIBLE);
                 mService.sendMessage(WearableApi.TRIGGER_GLUCOSE, "", null);
             }
         });
 
-        mAlarmDisabledTextView = (TextView) findViewById(R.id.alarm_disabled_text);
-        findViewById(R.id.alarm_disabled_button).setOnClickListener(new View.OnClickListener() {
+        mSnoozeHighTextView = (TextView) findViewById(R.id.snooze_high_text);
+        findViewById(R.id.snooze_high_button).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (mService != null) mService.disableAlarm(-1);
+                mService.disableAlarm(getString(R.string.key_snooze_high), -1);
+                prefs.edit().putString(getString(R.string.key_snooze_high), "-1").apply();
             }
         });
-        mAlarmDisabledParent = findViewById(R.id.alarm_disabled_parent);
+
+        mSnoozeHighParent = findViewById(R.id.snooze_high_parent);
+
+        mSnoozeLowTextView = (TextView) findViewById(R.id.snooze_low_text);
+        findViewById(R.id.snooze_low_button).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mService.disableAlarm(getString(R.string.key_snooze_low), -1);
+                prefs.edit().putString(getString(R.string.key_snooze_low), "-1").apply();
+            }
+        });
+
+        mSnoozeLowParent = findViewById(R.id.snooze_low_parent);
 
         mActionButton = (Button) layout.findViewById(R.id.action);
         mActionButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (mService != null) {
+                if (mService != null && mService.getReadingStatus() != null) {
                     switch (mService.getReadingStatus().status) {
                         case ALARM_HIGH:
                         case ALARM_LOW:
+                        case ALARM_OTHER:
                             mService.sendMessage(WearableApi.CANCEL_ALARM, "", null);
                             mService.stopAlarm();
                             break;
@@ -174,7 +192,7 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
             }
         });
 
-        mAdapter = new HistoryAdapter(this, this, mGlucoseUnitSettings);
+        mAdapter = new HistoryAdapter(this, this);
         RecyclerView recyclerView = (RecyclerView) layout.findViewById(R.id.history);
         recyclerView.setAdapter(mAdapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -196,6 +214,9 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
             AlarmDialogFragment fragment = AlarmDialogFragment.build(
                     intent.getBooleanExtra(AlarmDialogFragment.EXTRA_IS_HIGH, false),
                     intent.getIntExtra(AlarmDialogFragment.EXTRA_TREND_ORDINAL, 0), extraValue);
+
+            Fragment oldFragment = getFragmentManager().findFragmentByTag("alarm");
+            if (oldFragment != null) ((AlarmDialogFragment) oldFragment).dismiss();
 
             fragment.show(getFragmentManager().beginTransaction(), "alarm");
         }
@@ -258,6 +279,21 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        Bundle bundle = data == null ? null : data.getBundleExtra("result");
+        if (bundle != null) {
+
+            HashMap<String, String> settingsUpdated = new HashMap<>();
+            for (String key : bundle.keySet()) {
+                settingsUpdated.put(key, bundle.getString(key));
+            }
+            if (settingsUpdated.containsKey(getString(R.string.pref_key_mmol))) mQuickSettings.refresh();
+            if (settingsUpdated.size() > 0) mService.sendData(WearableApi.SETTINGS, settingsUpdated, null);
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (mDrawerToggle.onOptionsItemSelected(item)) {
             return true;
@@ -267,6 +303,12 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
         }
         if (item.getItemId() == R.id.nightscout) {
             startActivity(new Intent(this, NightscoutPreferences.class));
+        }
+        if (item.getItemId() == R.id.xdrip_plus) {
+            startActivityForResult(new Intent(this, XdripPlusPreferences.class),0);
+        }
+        if (item.getItemId() == R.id.preferences) {
+            startActivityForResult(new Intent(this, Preferences.class), 0);
         }
         return super.onOptionsItemSelected(item);
     }
@@ -293,39 +335,70 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
             switch (status.status) {
                 case ALARM_HIGH:
                 case ALARM_LOW:
+                case ALARM_OTHER:
                     mActionButton.setText(R.string.button_alarm);
+                    mActionButton.setVisibility(View.VISIBLE);
                     mTriggerGlucoseButton.setVisibility(View.GONE);
                     break;
                 case ATTEMPTING:
                 case ATTENPT_FAILED:
                 case WAITING:
                     mActionButton.setText(R.string.button_stop);
+                    mActionButton.setVisibility(View.VISIBLE);
                     mTriggerGlucoseButton.setVisibility(View.VISIBLE);
                     break;
                 case NOT_RUNNING:
                     mActionButton.setText(R.string.button_start);
+                    mActionButton.setVisibility(View.VISIBLE);
                     mTriggerGlucoseButton.setVisibility(View.GONE);
                     break;
             }
         } else {
-            mActionButton.setText(R.string.button_wait);
+            mActionButton.setVisibility(View.GONE);
             mTriggerGlucoseButton.setVisibility(View.GONE);
         }
-        long alarmDisabledUntil = Long.valueOf(PreferenceManager.getDefaultSharedPreferences(this)
-                .getString(PostponeSettings.class.getSimpleName(), "0"));
-        if (alarmDisabledUntil > System.currentTimeMillis()) {
-            mAlarmDisabledParent.setVisibility(View.VISIBLE);
-            mAlarmDisabledTextView.setText(getString(R.string.alarm_disabled_text,
-                    AlgorithmUtil.format(new Date(alarmDisabledUntil))));
-        } else {
-            mAlarmDisabledParent.setVisibility(View.GONE);
-        }
+
         if (mIsFirstStartup && status == null) {
             mStatusTextView.setText(R.string.status_message_first_startup);
         } else {
             mStatusTextView.setText(mService.getStatusString());
+            // TODO add layout item for battery instead of using append
+            if (mService.getBatteryLevel()>0) mStatusTextView.append(" Batt: " + mService.getBatteryLevel() + "%");
+            if (PreferencesUtil.shouldUseRoot(this) && status != null &&
+                    status.status == Type.ATTEMPTING && !status.hasRoot) {
+                mStatusTextView.append(" (no SuperSU)");
+            }
+            // simple indicator of root status, supersu root for wear is available at:
+            // http://forum.xda-developers.com/attachment.php?attachmentid=3342605&d=1433157678
+            // sha1: 00c2ccd6ff356fa5cf73124e978fc192af186d2d
+        }
+
+        updateAlarmSnoozeViews();
+    }
+
+    private void updateAlarmSnoozeViews() {
+
+        long snoozeHigh = Long.valueOf(PreferencesUtil.getString(this,
+                getString(R.string.key_snooze_high) + QuickSettingsItem.WATCH_VALUE));
+        if (snoozeHigh > System.currentTimeMillis()) {
+            mSnoozeHighParent.setVisibility(View.VISIBLE);
+            mSnoozeHighTextView.setText(getString(R.string.alarm_disabled_high_text,
+                    AlgorithmUtil.format(new Date(snoozeHigh))));
+        } else {
+            mSnoozeHighParent.setVisibility(View.GONE);
+        }
+
+        long snoozeLow = Long.valueOf(PreferencesUtil.getString(this,
+                getString(R.string.key_snooze_low) + QuickSettingsItem.WATCH_VALUE));
+        if (snoozeLow > System.currentTimeMillis()) {
+            mSnoozeLowParent.setVisibility(View.VISIBLE);
+            mSnoozeLowTextView.setText(getString(R.string.alarm_disabled_low_text,
+                    AlgorithmUtil.format(new Date(snoozeLow))));
+        } else {
+            mSnoozeLowParent.setVisibility(View.GONE);
         }
     }
+
 
     @Override
     public void onDatabaseChange() {
@@ -335,12 +408,12 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
     @Override
     public void onAdapterItemClicked(PredictionData predictionData) {
         String s = "";
+        boolean isMmol = PreferencesUtil.getBoolean(this, getString(R.string.pref_key_mmol), true);
         if (predictionData.glucoseLevel == -1) { // ERR
             s = getString(R.string.err_explanation);
         } else {
             for (GlucoseData data : mService.getDatabase().getTrend(predictionData.phoneDatabaseId)) {
-                s += AlgorithmUtil.format(new Date(data.realDate)) +
-                        ": " + data.glucose(mGlucoseUnitSettings.isMmol()) + "\n";
+                s += AlgorithmUtil.format(new Date(data.realDate)) + ": " + data.glucose(isMmol) + "\n";
             }
         }
 
@@ -350,7 +423,7 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
     }
 
     @Override
-    public void turnOff() {
+    public void turnOffAlarm() {
         mService.sendMessage(WearableApi.CANCEL_ALARM, "", null);
         mService.stopAlarm();
     }
@@ -359,13 +432,20 @@ public class MainActivity extends Activity implements WearService.WearServiceLis
     public void snooze(int minutes, boolean isGlucoseHigh) {
         if (mService != null) {
             mService.sendMessage(WearableApi.CANCEL_ALARM, "", null);
-            if (isGlucoseHigh) {
-                PreferencesUtil.setPreviousAlarmPostponeHigh(this, minutes);
-            } else {
-                PreferencesUtil.setPreviousAlarmPostponeLow(this, minutes);
-            }
-            mService.disableAlarm(minutes);
+            mService.disableAlarm(isGlucoseHigh ?
+                    getString(R.string.key_snooze_high) :
+                    getString(R.string.key_snooze_low), minutes);
             mService.stopAlarm();
         }
+    }
+
+    @Override
+    public void onWatchSettingsUpdated() {
+        mQuickSettings.watchValuesUpdated();
+    }
+
+    @Override
+    public void onQuickSettingsChanged(String key, String value) {
+        if (mService != null) mService.sendData(WearableApi.SETTINGS, key, value, null);
     }
 }

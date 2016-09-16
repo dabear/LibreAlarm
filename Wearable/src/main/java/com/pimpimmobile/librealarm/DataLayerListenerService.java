@@ -1,8 +1,6 @@
 package com.pimpimmobile.librealarm;
 
 import android.content.Intent;
-
-import android.util.Log;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -16,11 +14,11 @@ import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.Wearable;
 import com.google.android.gms.wearable.WearableListenerService;
 import com.google.gson.Gson;
+import com.pimpimmobile.librealarm.shareddata.PreferencesUtil;
 import com.pimpimmobile.librealarm.shareddata.ReadingData;
 import com.pimpimmobile.librealarm.shareddata.Status;
 import com.pimpimmobile.librealarm.shareddata.Status.Type;
 import com.pimpimmobile.librealarm.shareddata.WearableApi;
-import com.pimpimmobile.librealarm.shareddata.settings.SettingsUtils;
 
 import java.util.HashMap;
 
@@ -43,7 +41,6 @@ public class DataLayerListenerService extends WearableListenerService {
             AlarmReceiver.post(this, 120000);
         } else if (System.currentTimeMillis() > AlarmReceiver.getNextCheck(this) &&
                 PreferencesUtil.getIsStarted(this)) {
-            Log.i("UITest", "create start glucose activity");
             startActivity(new Intent(this, WearActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         }
     }
@@ -75,10 +72,10 @@ public class DataLayerListenerService extends WearableListenerService {
                     DataMap dataMap = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();
                     for (String key : dataMap.keySet()) {
                         newSettings.put(key, dataMap.getString(key, null));
+                        PreferencesUtil.putString(this, key, newSettings.get(key));
                     }
-                    SettingsUtils.saveSettings(this, newSettings);
 
-                    WearableApi.sendMessage(mGoogleApiClient, WearableApi.SETTINGS, WearableApi.MESSAGE_ACK, null);
+                    WearableApi.sendMessage(mGoogleApiClient, WearableApi.SETTINGS, PreferencesUtil.toString(newSettings), null);
 
                     sendStatus(mGoogleApiClient);
                 }
